@@ -562,7 +562,7 @@ namespace Jerrycurl.Data.Queries.Internal.Compilation
             }
             catch (Exception ex)
             {
-                throw BindingException.FromProperty(binder.Metadata.Identity.Name, ex.Message, ex);
+                throw BindingException.InvalidCast(binder.Metadata, ex);
             }
 
             if (convertedValue == null || object.ReferenceEquals(convertedValue, variable))
