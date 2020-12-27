@@ -1,13 +1,15 @@
+![Jerrycurl](gfx/icon.png)
+
 [![NuGet](https://img.shields.io/nuget/v/Jerrycurl)](https://nuget.org/packages/Jerrycurl)
 [![Build status](https://ci.appveyor.com/api/projects/status/aihogw33ef50go9r?svg=true)](https://ci.appveyor.com/project/rhodosaur/jerrycurl/branch/master)
 [![Test status](https://img.shields.io/appveyor/tests/rhodosaur/jerrycurl/dev)](https://ci.appveyor.com/project/rhodosaur/jerrycurl/branch/master/tests)
 [![Gitter chat](https://badges.gitter.im/gitterHQ/gitter.png)](https://gitter.im/jerrycurl-mvc/community)
-# Jerrycurl - ORM, MVC and Razor SQL framework for .NET
 
-**Jerrycurl** is an object-relational framework that allows developers to build **data access layers** in a way similar to how web applications are built with **ASP.NET MVC**.
+## Jerrycurl - High-performance ORM and MVC framework for .NET
+**Jerrycurl** is an object-relational mapper, MVC framework and Razor SQL implementation that allows developers to build data access for .NET using tools and features inspired by those of ASP.NET.
 
 ### Installation
-Jerrycurl can be installed into any [SDK-style](https://docs.microsoft.com/en-us/nuget/resources/check-project-format) C# project from NuGet. The main package contains support for compiling `.cssql` files into your project and executing them via the built-in MVC engine. Additionally you can install support for [one of our supported databases](https://nuget.org/packages?q=Jerrycurl.Vendors) from NuGet as well.
+Jerrycurl is available on NuGet and can be installed into any [SDK-style](https://docs.microsoft.com/en-us/nuget/resources/check-project-format) C# project. Its main package contains support for compiling `.cssql` files into your project and executing them via the built-in MVC engine. Additionally you can install support for [one of our supported databases](https://nuget.org/packages?q=Jerrycurl.Vendors) from NuGet as well.
 
 ```shell
 > dotnet add package Jerrycurl
@@ -15,69 +17,72 @@ Jerrycurl can be installed into any [SDK-style](https://docs.microsoft.com/en-us
 ```
 
 #### Tooling
-If you want to generate a ready-to-go object model from your database, install our [CLI](https://www.nuget.org/packages/dotnet-jerry/) from NuGet.
+You can generate a basic object model from your database schema by installing and invoking our [CLI](https://www.nuget.org/packages/dotnet-jerry/).
 ```shell
 > dotnet tool install --global dotnet-jerry
-```
-This enables the `jerry` executable anywhere on your machine. In our case we'll use the `scaffold` command to generate a `.cs` file with classes matching a local database about movies.
-```shell
-> jerry scaffold -v sqlserver -c "SERVER=.;DATABASE=moviedb;TRUSTED_CONNECTION=true" -ns "MovieDb.Database"
-Connecting to database 'moviedb'...
+> jerry scaffold -v sqlserver -c "DATABASE=blogdb;..." -ns BlogDb.Database
+Connecting to database 'blogdb'...
 Generating...
 Generated 7 tables and 21 columns in Database.cs.
 ```
-To learn more about our CLI, type in `jerry help`.
+To learn more about the CLI, type in `jerry help`.
 
-### MVC design
-After installing the packages above you can start adding the different components to your project. This should feel familiar to anyone acquainted with ASP.NET MVC, and for the most part Jerrycurl aligns itself with this framework, only with a slightly different terminology. 
-
-So where your ASP.NET application contains models, controllers and Razor HTML-based views, Jerrycurl separates your project into models, accessors and procedures written with Razor SQL syntax.
+### MVC setup
+Jerrycurl features a variant of the model-view-controller pattern made specifically for the relational world and its most prized asset: the SQL language. Each project consists of a selection of models, accessors and queries/commands, as per the CQS pattern.
 
 #### Model layer
-The model layer is a collection of POCO-like classes that represent tables and customized datasets for your operations. Each model can be mapped at any depth with any type of data relationship: one-to-one, one-to-many, many-to-one and self-joins.
+The model is rooted in the classes we generated with the CLI above and represented in the familiar class-per-table way.
+
 ```csharp
 // Database.cs
-[Table("dbo", "Movie")]
-class Movie
+[Table("dbo", "Blog")]
+class Blog
 {
-    [Id, Key("PK_Movie")]
+    [Id, Key("PK_Blog")]
     public int Id { get; set; }
     public string Title { get; set; }
-    public int Year { get; set; }
+    public DateTime CreatedOn { get; set; }
 }
+//...
 ```
+
+You can use and combine these classes in any way you want to create customized views. This is done with simple composition and supports both unary properties (one-to-one mapping) or n-ary lists (one-to-many mapping).
+
 ```csharp
-// Views/Movies/MovieTaglineView.cs
-class MovieTaglineView : Movie
+// Views/Blogs/BlogView.cs
+class BlogView : Blog
 {
-    public string Tagline { get; set; }
-}
-```
-```csharp
-// Views/Movies/MovieRolesView.cs
-class MovieRolesView : Movie
-{
-    public IList<MovieRole> Roles { get; set; }
+    public BlogAuthor Author { get; set; }
+    public IList<BlogPost> Posts { get; set; }
 }
 ```
 
-#### Procedure (view) layer
-Procedures are written in `.cssql` files and separated into **commands** that write data (`INSERT`, `UPDATE`, `DELETE`) and **queries** that read data (`SELECT`). Both are written with a combination of **SQL and Razor code** generating SQL payloads directly from your object model.
-```
--- Queries/Movies/GetMovies.cssql
-@result MovieTaglineView
-@model MovieFilter
-@project MovieDetails d
+#### Command/query layer
+To dive into the command/query layer, we use *projections* the models above, which power customized Razor SQL syntax. Each query or command is represented a a file with the `.cssql` extension, which ensures that they are included in the usual build process.
 
-SELECT     @R.Star(),
-           @d.Col(m => m.Tagline) AS @R.Prop(m => m.Tagline)
-FROM       @R.Tbl()
-LEFT JOIN  @d.Tbl() ON @d.Col(m => m.MovieId) = @R.Col(m => m.Id)
-WHERE      @R.Col(m => m.Year) >= @M.Par(m => m.SinceYear)
+They are placed in either the `Queries` or `Commands` folders based on whether they *read* or *write* data in the underlying database.
+```sql
+-- Queries/Blogs/GetAll.cssql
+@result BlogView
+@model BlogFilter
+@{
+    var p = R.Open(m => m.Posts);
+}
+
+SELECT      @R.Star(),
+            @R.Star(m => m.Author)
+INNER JOIN  @R.Tbl(m => m.Author) ON @R.Col(m => m.Author.BlogId) = @R.Col(m => m.Id)
+FROM        @R.Tbl()
+WHERE       @R.Col(m => m.CreatedOn) >= @M.Par(m => m.FromDate)
+
+SELECT      @p.Star()
+FROM        @p.Tbl()
+INNER JOIN  @R.Tbl() ON @R.Col(m => m.Id) = @p.Col(m => m.BlogId)
+WHERE       @R.Col(m => m.CreatedOn) >= @M.Par(m => m.FromDate)
 ```
-```
--- Commands/Movies/AddMovies.cssql
-@model Movie
+```sql
+-- Commands/Blogs/AddBlogs.cssql
+@model Blog
 
 @foreach (var v in this.M.Vals())
 {
@@ -88,59 +93,51 @@ WHERE      @R.Col(m => m.Year) >= @M.Par(m => m.SinceYear)
 ```
 
 #### Accessor (controller) layer
-Accessors provide the bridge from your code to the consumer by exposing a collection of methods that executes Razor commands and queries and maps their resulting data sets to matching objects.
+Accessors prepare *input data* for `@model` and executes an associated Razor query or command using one of its base methods. This invokes the MVC engine which in turn generates the final SQL statements, dispatches it to the database and returns its output as either a series of new `@result` objects (queries) or modifications to existing `@model` data (commands).
 ```csharp
-// Accessors/MoviesAccessor.cs
-public class MoviesAccessor : Accessor
+// Accessors/BlogsAccessor.cs
+public class BlogsAccessor : Accessor
 {
-    public IList<MovieTaglineView> GetMovies(int sinceYear) // -> Queries/Movies/GetMovies.cssql
-        => this.Query<MovieTaglineView>(model: new MovieFilter { SinceYear = sinceYear });
+    public IList<BlogView> GetAll(DateTime fromDate) // -> Queries/Blogs/GetAll.cssql
+        => this.Query<BlogView>(model: new BlogFilter { FromDate = fromDate });
     
-    public void AddMovies(IList<Movie> newMovies) // -> Commands/Movies/AddMovies.cssql
+    public void AddBlogs(IList<Blog> newBlogs) // -> Commands/Blogs/AddBlogs.cssql
         => this.Execute(model: newMovies);
 }
 ```
 
 #### Domain (application) layer
-Domains provide a central place for fetching configuration for any (or a subset of) your database operations.
+A domain should be created in a parent namespace and presents a shared place for adding the requires configuration for all associated commands or queries executions.
 ```csharp
-// MovieDomain.cs
-class MovieDomain : IDomain
+// BlogsDomain.cs
+class BlogsDomain : IDomain
 {
     public void Configure(DomainOptions options)
     {
-        options.UseSqlServer("SERVER=.;DATABASE=moviedb;TRUSTED_CONNECTION=true");
-        options.UseJson();
+        options.UseSqlServer("SERVER=.;DATABASE=blogdb;TRUSTED_CONNECTION=true");
     }
 }
 ```
 
-## Features
-* [Official support](https://nuget.org/packages/?q=Jerrycurl.Vendors) for SQL Server, PostgreSQL, MySQL, Oracle and SQLite
-* [CLI tool](https://nuget.org/packages/dotnet-jerry) to easily generate classes from your database schema
-* Extensive collection of typesafe Razor extensions for all boilerplate SQL
-* Single **queries** that map complete object graphs of any [cardinality](https://en.wikipedia.org/wiki/Cardinality_(data_modeling))
-* Batchable **commands** through simple `@foreach` expressions
-* Easy integration with any dependency injection container
-* [High performance](https://github.com/rhodosaur/RawDataAccessBencher/blob/master/Results/20191115_jerrycurl.txt) and support for all operations synchronously or asynchronously
-* Organized, ASP.NET-like project conventions with [MVC](https://en.wikipedia.org/wiki/Model%E2%80%93view%E2%80%93controller)
-* Native [command-query separation](https://en.wikipedia.org/wiki/Command%E2%80%93query_separation) suitable for [ACID](https://en.wikipedia.org/wiki/ACID) or [BASE](https://en.wikipedia.org/wiki/Eventual_consistency)/[CQRS](https://docs.microsoft.com/en-us/azure/architecture/patterns/cqrs) scenarios
-* JSON support through `Newtonsoft.Json` or `System.Text.Json`
-* Integration with existing Entity Framework Core models
-* Modern language features with .NET Standard 2.1 and C# 8
-* Free and [available via NuGet](https://www.nuget.org/packages?q=Jerrycurl)
+#### Usage
+To use your newly minted accessor, you need nothing more then to simply fire up an instance, and get a-queryin'.
 
-To learn more about Jerrycurl and how to get started, visit [our official site](https://jerrycurl.net) or check our [samples repo](https://github.com/rwredding/jerrycurl-samples).
+```csharp
+var accessor = new BlogsAccessor();
+var blogs = accessor.GetAll();
+```
+
+To learn more about Jerrycurl and how to get started, visit [our official site](https://jerrycurl.net).
 
 ## Building from source
-Jerrycurl can be built on [any OS supported by .NET Core](https://docs.microsoft.com/en-us/dotnet/core/install/dependencies) and included in this repository is a [script](build.ps1) that performs all build-related tasks.
+Jerrycurl can be built on [any OS supported by .NET Core](https://docs.microsoft.com/en-us/dotnet/core/install/dependencies) and included in this repository is a [PowerShell script](build.ps1) that performs all build-related tasks.
 
 ### Prerequisites
-* .NET Core SDK 3.0
-* .NET Core Runtime 2.1+ / 3.0 (to run tests)
-* PowerShell 5.0+ (PowerShell Core on Linux/macOS) 
-* Visual Studio 2019 (16.3+) (optional)
-* Docker (optional - for live database tests)
+* .NET Core SDK 5.0 (to build)
+* .NET Core Runtime 2.1 / 3.1 (to test)
+* PowerShell 5.0+ (PowerShell Core on Linux/macOS)
+* Visual Studio 2019 (optional)
+* Docker (to live test databases) (optional)
 
 ### Clone, Build and Test
 Clone the repository and run our build script from PowerShell.
