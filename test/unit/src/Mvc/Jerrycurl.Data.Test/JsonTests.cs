@@ -127,16 +127,21 @@ namespace Jerrycurl.Data.Test
             var json = "{\"Hello\":\"World!\"}";
             var data1 = JsonDocument.Parse(json);
             var data2 = data1.RootElement;
+            var data3 = (JsonElement?)data2;
             var parameter1 = new Parameter("P0", store.From(data1));
             var parameter2 = new Parameter("P1", store.From(data2));
+            var parameter3 = new Parameter("P2", store.From(data3));
             var sqlParameter1 = new SqliteParameter();
             var sqlParameter2 = new SqliteParameter();
+            var sqlParameter3 = new SqliteParameter();
 
             parameter1.Build(sqlParameter1);
             parameter2.Build(sqlParameter2);
+            parameter3.Build(sqlParameter3);
 
             sqlParameter1.Value.ShouldBe(json);
             sqlParameter2.Value.ShouldBe(json);
+            sqlParameter3.Value.ShouldBe(json);
         }
 
         public void Test_Insert_JsonElement()
